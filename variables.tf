@@ -1,5 +1,5 @@
 variable "token" {
-type = string
-sensitive = true
-description = "klucz do digitaloceans"
+  type        = string
+  sensitive   = true
+  description = "klucz do digitaloceans"
 }

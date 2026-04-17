@@ -7,9 +7,9 @@ terraform {
       version = ">= 2.0"
     }
   }
-  
+
   cloud {
-    
+
     organization = "Kaczorro"
 
     workspaces {
@@ -23,8 +23,8 @@ provider "digitalocean" {
 }
 
 resource "digitalocean_droplet" "main" {
-    name = "Kaczorro"
-    image = "ubuntu-22-04-x64"
-    size = "s-1vcpu-1gb"
+  name  = "Kaczorro"
+  image = "ubuntu-22-04-x64"
+  size  = "s-1vcpu-1gb"
 }
 
