@@ -23,8 +23,14 @@ provider "digitalocean" {
 }
 
 resource "digitalocean_droplet" "main" {
-  name  = "Kaczorro"
+  name  = "kaczorro-droplet"
   image = "ubuntu-22-04-x64"
   size  = "s-1vcpu-1gb"
+  region = "fra1"
+}
+
+resource "digitalocean_vpc" "vpc" {
+  name   = "kaczorro-vpc"
+  region = "fra1"
 }
 
