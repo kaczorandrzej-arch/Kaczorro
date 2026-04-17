@@ -1,5 +1,5 @@
 # .github/workflows/main.yaml
-name: "Terraform Plan and Apply"
+name: "Terraform Plan and Apply & Destroy"
 
 on:
   workflow_dispatch:
