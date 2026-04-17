@@ -3,9 +3,9 @@ name: "Terraform Plan and Apply & Destroy"
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - main
+  # push:
+  #   branches:
+  #     - main
 
 jobs:
   # This job validates the Terraform configuration files. ============================================================
@@ -33,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'workflow_dispatch'
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5secte
 
       - uses: hashicorp/setup-terraform@v3
         with:
