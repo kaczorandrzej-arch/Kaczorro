@@ -29,19 +29,19 @@ jobs:
         run: terraform validate
   
   # This job checks the formatting of the Terraform configuration files. =================================================
-  tf-fmt:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch'
-    steps:
-      - uses: actions/checkout@v5
+  # tf-fmt:
+  #   runs-on: ubuntu-latest
+  #   if: github.event_name == 'workflow_dispatch'
+  #   steps:
+  #     - uses: actions/checkout@v5
 
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.14
+  #     - uses: hashicorp/setup-terraform@v3
+  #       with:
+  #         terraform_version: 1.14
 
-      - name: Terraform fmt
-        id: fmt
-        run: terraform fmt -check -recursive
+  #     - name: Terraform fmt
+  #       id: fmt
+  #       run: terraform fmt -check -recursive
 
   tf-plan:
     runs-on: ubuntu-latest

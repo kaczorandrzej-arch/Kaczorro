@@ -23,6 +23,7 @@ provider "digitalocean" {
 }
 
 resource "digitalocean_droplet" "main" {
+  count =2
   name  = "kaczorro-droplet"
   image = "ubuntu-22-04-x64"
   size  = "s-1vcpu-1gb"
