@@ -1,0 +1,260 @@
+# .github/workflows/main.yaml
+name: "Terraform Plan and Apply"
+
+on:
+  workflow_dispatch:
+
+jobs:
+  # This job validates the Terraform configuration files. ============================================================
+  tf-validate:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Terraform init
+        id: init
+        run: terraform init -input=false
+
+      - name: Terraform validate
+        id: validate
+        run: terraform validate
+  
+  # This job checks the formatting of the Terraform configuration files. =================================================
+  tf-fmt:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14
+
+      - name: Terraform fmt
+        id: fmt
+        run: terraform fmt -check -recursive
+
+  tf-plan:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch'
+    needs: tf-validate
+
+    outputs:
+      tfplanExitCode: S{{ steps.tf-plan.outputs.exitcode }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Configure variable file
+        run: |
+          cat << EOF > ./.auto.tfvars
+          ${{ secrets.VAR_TFVARS }}
+          EOF
+
+      - name: Terraform init
+        id: init
+        run: terraform init -input=false
+
+      - name: Terraform plan 
+        id: only_plan
+        if: github.ref != 'refs/heads/main'
+        run: |
+          terraform plan \
+          -out=tfplan \
+          -input=false
+
+      - name: Terraform plan with tfplan output
+        id: plan
+        if: github.ref == 'refs/heads/main'
+        run: |
+          export exitcode=0
+          terraform plan \
+          -detailed-exitcode \
+          -out=tfplan \
+          -input=false || export exitcode=$?
+
+          echo "exitcode=$exitcode" >> $GITHUB_OUTPUT
+
+          if [ $exitcode -eq 1 ]; then
+            echo "Plan failed"
+            exit 1
+          else
+            echo "Plan succeeded"
+            exit 0
+          fi
+
+      - name: Upload tfplan
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: tfplan
+  
+  tf-summarize:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    needs: [tf-plan]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download tfplan
+        uses: actions/download-artifact@v5
+        with:
+          name: tfplan
+          path: ./downloaded-tfplan
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Terraform init
+        id: init
+        run: terraform init -input=false
+
+      - name: Convert to JSON
+        id: show
+        run: |
+          terraform show -json ./downloaded-tfplan/tfplan > tfplan.json
+
+      - name: Install Docker
+        uses: docker/setup-buildx-action@v3
+
+      - name: Visualize Terraform plan
+        id: visualize
+        run: |
+         USER_ID=$(id -u)
+         GROUP_ID=$(id -g)
+         # summary in table format
+         echo ""
+         echo "############################" 
+         echo "###  TREE FORMAT - PLAN  ###"
+         echo "############################" 
+         echo "" 
+         docker run --rm -v $PWD:/workspace -w /workspace ghcr.io/dineshba/tf-summarize -tree tfplan.json 
+
+         echo "### TABLE FORMAT - PLAN ###" >> $GITHUB_STEP_SUMMARY
+         echo "" >> $GITHUB_STEP_SUMMARY 
+         docker run --user $USER_ID:$GROUP_ID --rm -v $PWD:/workspace -w /workspace ghcr.io/dineshba/tf-summarize -md -out tfplan.md tfplan.json
+         docker run --user $USER_ID:$GROUP_ID --rm -v $PWD:/workspace -w /workspace ghcr.io/dineshba/tf-summarize -html -out tfplan.html tfplan.json
+         cat tfplan.md >> $GITHUB_STEP_SUMMARY
+  
+         # summary in separate tree format
+         echo "" >> $GITHUB_STEP_SUMMARY
+         echo "###############################" 
+         echo "###  TREE S FORMAT - PLAN   ###"
+         echo "###  TREE S FORMAT - PLAN   ###" >> $GITHUB_STEP_SUMMARY
+         echo "###############################"
+         echo "" >> $GITHUB_STEP_SUMMARY
+         echo '```bash' >> $GITHUB_STEP_SUMMARY
+         docker run --rm -v $PWD:/workspace -w /workspace ghcr.io/dineshba/tf-summarize -separate-tree tfplan.json
+         docker run --rm -v $PWD:/workspace -w /workspace ghcr.io/dineshba/tf-summarize -separate-tree tfplan.json >> $GITHUB_STEP_SUMMARY
+         echo '```' >> $GITHUB_STEP_SUMMARY
+  
+  tf-apply:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    needs: [tf-plan]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Configure variable file
+        run: |
+          cat << EOF > ./.auto.tfvars
+          ${{ secrets.VAR_TFVARS }}
+          EOF
+
+      - name: Terraform init
+        id: init
+        run: terraform init -input=false
+
+      - name: Download tfplan
+        uses: actions/download-artifact@v5
+        with:
+          name: tfplan
+          path: ./downloaded-tfplan
+
+      - name: Terraform apply
+        id: apply
+        run: |
+          terraform apply ./downloaded-tfplan/tfplan
+
+  tf-output:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    needs: [tf-apply]
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14
+          cli_config_credentials_token: ${{ secrets.TF_API_TOKEN }}
+
+      - name: Terraform init
+        id: init
+        run: terraform init -input=false
+
+      - name: Terraform output
+        id: output
+        run: terraform output
+
+  # discord_error_message:
+  #   runs-on: ubuntu-latest
+  #   needs: [tf-validate, tf-fmt, tf-plan, tf-apply, tf-summarize]
+  #   if: ${{ always() && contains(needs.*.result, 'failure') }}
+  #   steps:
+  #     - name: Identify failed job
+  #       id: identify_failed_job
+  #       run: |
+  #         failed_jobs=()
+  #         if [ "${{ needs.tf-validate.result }}" == "failure" ]; then
+  #           failed_jobs+=("tf-validate")
+  #         fi
+  #         if [ "${{ needs.tf-fmt.result }}" == "failure" ]; then
+  #           failed_jobs+=("tf-fmt")
+  #         fi
+  #         if [ "${{ needs.tf-plan.result }}" == "failure" ]; then
+  #           failed_jobs+=("tf-plan")
+  #         fi
+  #         if [ "${{ needs.tf-apply.result }}" == "failure" ]; then
+  #           failed_jobs+=("tf-apply")
+  #         fi
+  #         if [ "${{ needs.tf-summarize.result }}" == "failure" ]; then
+  #           failed_jobs+=("tf-summarize")
+  #         fi
+  #         echo "failed_jobs=${failed_jobs[@]}" >> $GITHUB_ENV
+
+  #     - name: Send Discord notification
+  #       uses: tsickert/discord-webhook@v5.3.0
+  #       with:
+  #         webhook-url: ${{ secrets.WEBHOOK_URL_DISCORD }}
+  #         content: |
+  #           **PROBLEM:** There was a problem with the Terraform workflow:
+  #           - **Repository:** ${{ github.repository }}
+  #           - **Branch:** ${{ github.ref }}
+  #           - **Action:** ${{ github.event_name }}
+  #           - **Workflow:** ${{ github.workflow }}
+  #           - **Failed Jobs:** ${{ env.failed_jobs }}
+  #           - **Run ID:** ${{ github.run_id }}
+  #           - **Run Number:** ${{ github.run_number }}
+  #           - **Commit:** ${{ github.sha }}
